@@ -15,7 +15,6 @@
 #include <drogon/drogon.h>
 
 #include <cstdlib>
-#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <nlohmann/json.hpp>
