@@ -10,8 +10,8 @@ namespace graphene {
 namespace {
 
 // Degrees of latitude/longitude assigned per grid cell. Kept small so that even
-// a large grid stays inside valid lat/lon ranges, which keeps the great-circle
-// heuristic well-defined.
+// a large grid stays inside valid lat/lon ranges, which keeps the projection-
+// based heuristic well-defined.
 constexpr double kGridDegPerCell = 1e-3;
 
 // Append both directions of an undirected edge with the same weight.

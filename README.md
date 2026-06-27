@@ -13,9 +13,10 @@ small HTTP API.
   engines use. Three flat arrays, trivially serializable.
 - **Three algorithms behind one interface** — BFS (hop baseline), Dijkstra
   (binary heap, lazy deletion), and A\* with a pluggable heuristic.
-- **A self-calibrating, provably-admissible A\* heuristic** — great-circle
-  distance scaled by the graph's fastest edge, so it works on both real road
-  networks and the synthetic generators without manual tuning.
+- **A self-calibrating, provably-admissible A\* heuristic** — Euclidean distance
+  on an equirectangular projection (a planar, trig-free approximation of
+  great-circle distance) scaled by the graph's fastest edge, so it works on
+  both real road networks and the synthetic generators without manual tuning.
 - **Instant startup** — first DIMACS load is cached to a binary format; restarts
   are a single bulk read.
 - **Benchmark harness** — runs every algorithm over the same seeded query set and
