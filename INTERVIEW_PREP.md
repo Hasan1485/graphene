@@ -26,7 +26,7 @@
 
 - **CSR Graph** — Compressed Sparse Row format: 3 flat arrays, cache-friendly, trivially serializable.
 - **Three algorithms**: BFS (hop-count baseline), Dijkstra (binary heap with lazy deletion), A\* (heuristic-guided).
-- **Self-calibrating A\* heuristic** — great-circle distance scaled by the graph's fastest edge. Automatically admissible on any graph.
+- **Self-calibrating A\* heuristic** — straight-line distance (equirectangular projection to a local metric plane) scaled by the graph's fastest edge. Automatically admissible on any graph.
 - **Binary caching** — first DIMACS text load is cached to `.bin` for instant restarts.
 - **Benchmark harness** — runs all algorithms over the same deterministic query set, exports per-query + aggregate stats (mean/median/p95) as JSON.
 - **HTTP API** built with Drogon — three endpoints: graph info, single query, and benchmark.
@@ -47,11 +47,11 @@
 
 ## Architecture & Folder Structure
 
-\`\`\`
+```
 graphene/
 ├── src/
 │   ├── graph/           ← Core data structure (THE MAP)
-│   │   ├── graph.hpp         Graph class (4 CSR arrays + helpers)
+│   │   ├── graph.hpp         Graph class (3 CSR arrays + coords + helpers)
 │   │   ├── builder.hpp/cpp   buildCSR() — converts edge list → CSR format (3-pass algorithm)
 │   │   ├── generator.hpp/cpp Creates synthetic graphs (grid, random sparse)
 │   │   ├── dimacs.hpp/cpp    Parses DIMACS road network text files
@@ -76,11 +76,11 @@ graphene/
 ├── vcpkg_installed/      ← Installed third-party libraries
 ├── CMakeLists.txt        ← Build recipe
 └── vcpkg.json            ← Dependency manifest ("drogon", "nlohmann-json")
-\`\`\`
+```
 
 ### High-Level Data Flow
 
-\`\`\`
+```
 ┌─────────────┐     ┌─────────────┐
 │  CLI tool   │     │  HTTP API   │
 │  (terminal) │     │  (server)   │
@@ -95,13 +95,13 @@ graphene/
        │  graph/   ──→ algorithms/ ──→ benchmark/
        │  (data)       (logic)        (metrics)
        └────────────────┘
-\`\`\`
+```
 
-Both the CLI and API share the exact same compiled static library (\`build/libgraphene_core.a\`). Zero logic duplication.
+Both the CLI and API share the exact same compiled static library (`build/libgraphene_core.a`). Zero logic duplication.
 
 ### Graph Creation Flow
 
-\`\`\`
+```
 Path 1 (real data → binary cache):
     DIMACS .gr text file
          ↓
@@ -126,11 +126,11 @@ Path 3 (fast restart):
     Serializer::load("graph.bin") — bulk read, instant
          ↓
     Graph object (bypasses builder entirely!)
-\`\`\`
+```
 
 ### Query Execution Flow
 
-\`\`\`
+```
 1. Load Graph (once per CLI command, once at API startup)
 2. User specifies: source node, destination node, algorithm name(s)
 3. makeAlgorithm("dijkstra") → unique_ptr<Algorithm> pointing to a Dijkstra object
@@ -138,7 +138,7 @@ Path 3 (fast restart):
 5. Result contains: path (vector of NodeId), cost (total weight),
    nodesExpanded (efficiency metric), timeMs (wall clock)
 6. CLI prints it / API sends it as JSON
-\`\`\`
+```
 
 ---
 
@@ -189,7 +189,7 @@ Path 3 (fast restart):
 
 **Definition**: A child class inherits properties and methods from a parent. Child IS-A Parent.
 
-\`\`\`cpp
+```cpp
 // PARENT — algorithm.hpp
 class Algorithm {
 public:
@@ -205,7 +205,7 @@ class AStar    : public Algorithm { ... };  // AStar IS-AN Algorithm
 // heuristic.hpp:
 class ZeroHeuristic      : public Heuristic { ... };
 class EuclideanHeuristic : public Heuristic { ... };
-\`\`\`
+```
 
 **Where**: `src/algorithms/` — BFS, Dijkstra, AStar all inherit from Algorithm. Heuristics inherit from Heuristic.
 
@@ -215,7 +215,7 @@ class EuclideanHeuristic : public Heuristic { ... };
 
 **Definition**: Calling the same function name on different objects gets different behavior — resolved at runtime via virtual dispatch.
 
-\`\`\`cpp
+```cpp
 // The caller (cli, api, benchmark) doesn't know or care what concrete type algo points to:
 std::unique_ptr<Algorithm> algo = makeAlgorithm("dijkstra");
 Result r = algo->solve(g, src, dst);   // calls Dijkstra::solve()
@@ -225,7 +225,7 @@ r = algo->solve(g, src, dst);          // exact same line, now calls BFS::solve(
 
 algo = makeAlgorithm("astar-euclidean");
 r = algo->solve(g, src, dst);          // calls AStar::solve() with Euclidean heuristic
-\`\`\`
+```
 
 The `virtual` keyword makes this possible. Without it, C++ would always call `Algorithm::solve()` (which is `= 0`, an error).
 
@@ -237,7 +237,7 @@ The `virtual` keyword makes this possible. Without it, C++ would always call `Al
 
 **Definition**: Users of a class interact with a simple interface and don't need to know internal implementation details.
 
-\`\`\`cpp
+```cpp
 // The user sees only THIS:
 auto algo = makeAlgorithm("dijkstra");
 Result r = algo->solve(g, src, dst);
@@ -247,14 +247,14 @@ Result r = algo->solve(g, src, dst);
 //   - Distance arrays initialized to kInf
 //   - Parent pointer reconstruction from dst back to src
 //   - Timer using std::chrono::steady_clock
-\`\`\`
+```
 
 Same with `Graph` helpers:
 
-\`\`\`cpp
+```cpp
 int n = g.numNodes();      // abstracted: hides offsets.empty() ? 0 : offsets.size() - 1
 int d = g.degree(u);       // abstracted: hides offsets[u+1] - offsets[u]
-\`\`\`
+```
 
 **Where**: `algorithm.hpp` (the base class), `graph.hpp` (the helper methods).
 
@@ -264,14 +264,14 @@ int d = g.degree(u);       // abstracted: hides offsets[u+1] - offsets[u]
 
 **Definition**: A class contains another object as a member. HAS-A instead of IS-A.
 
-\`\`\`cpp
+```cpp
 // astar.hpp
 class AStar : public Algorithm {            // AStar IS-AN Algorithm (inheritance)
 private:
     std::shared_ptr<Heuristic> heuristic_;  // AStar HAS-A Heuristic (composition)
     std::string name_;
 };
-\`\`\`
+```
 
 Unlike inheritance, the heuristic can be swapped at runtime without changing `AStar`'s code at all.
 
@@ -283,7 +283,7 @@ Unlike inheritance, the heuristic can be swapped at runtime without changing `AS
 
 **Definition**: Instead of a class creating its own dependencies internally, they are passed in from outside. Makes the class flexible and testable.
 
-\`\`\`cpp
+```cpp
 // astar.hpp — constructor: the injected Heuristic
 explicit AStar(std::shared_ptr<Heuristic> heuristic)
     : heuristic_(std::move(heuristic)), name_("astar-" + heuristic_->name()) {}
@@ -292,7 +292,7 @@ explicit AStar(std::shared_ptr<Heuristic> heuristic)
 // factory.cpp — the caller chooses what to inject:
 make_unique<AStar>(make_shared<EuclideanHeuristic>());    // → real A*
 make_unique<AStar>(make_shared<ZeroHeuristic>());         // → A* that behaves like Dijkstra
-\`\`\`
+```
 
 **Benefit**: To add a new heuristic (e.g., ManhattanDistance), you create the class and pass it to AStar's constructor. AStar itself never changes.
 
@@ -304,16 +304,16 @@ make_unique<AStar>(make_shared<ZeroHeuristic>());         // → A* that behaves
 
 **Definition**: A function that creates and returns objects of different types based on a string/int/enum, hiding construction details in one place.
 
-\`\`\`cpp
+```cpp
 // factory.cpp — THE ONLY PLACE that knows how to build all algorithm types
 std::unique_ptr<Algorithm> makeAlgorithm(const std::string& name) {
-    if (name == "bfs")              return make_unique<BFS>();
-    if (name == "dijkstra")         return make_unique<Dijkstra>();
-    if (name == "astar-euclidean")  return make_unique<AStar>(make_shared<EuclideanHeuristic>());
-    if (name == "astar-zero")       return make_unique<AStar>(make_shared<ZeroHeuristic>());
+    if (name == "bfs")                              return make_unique<BFS>();
+    if (name == "dijkstra")                         return make_unique<Dijkstra>();
+    if (name == "astar" || name == "astar-euclidean") return make_unique<AStar>(make_shared<EuclideanHeuristic>());
+    if (name == "astar-zero")                       return make_unique<AStar>(make_shared<ZeroHeuristic>());
     return nullptr;  // unknown name
 }
-\`\`\`
+```
 
 **Without factory** — the if-else chain would be duplicated in: `cli/main.cpp`, `api/main.cpp`, `benchmark.cpp`, AND `resolveAlgorithms()` for validation.
 
@@ -327,7 +327,7 @@ std::unique_ptr<Algorithm> makeAlgorithm(const std::string& name) {
 
 **Definition**: Methods that belong to the class itself, not to any instance. Called as `ClassName::method()` without creating an object.
 
-\`\`\`cpp
+```cpp
 // These classes have NO state — they're organizational groupings of free functions:
 class Dimacs {
 public:
@@ -350,7 +350,7 @@ public:
 Graph g = Dimacs::load("NY.gr");
 Graph g2 = Generator::gridGraph(100, 100);
 Serializer::save(g, "output.bin");
-\`\`\`
+```
 
 **Vs. regular classes**: `BFS`, `Dijkstra`, `AStar` have internal state (the `heuristic_` pointer) → need actual objects. `Dimacs`, `Generator`, `Serializer` have no memory of past operations → static methods suffice.
 
@@ -362,7 +362,7 @@ Serializer::save(g, "output.bin");
 
 **Definition**: Define a family of algorithms, encapsulate each one, and make them interchangeable. Strategy lets the algorithm vary independently from clients that use it.
 
-\`\`\`cpp
+```cpp
 // The "Strategy" interface:
 class Heuristic {
     virtual void prepare(const Graph& g, NodeId dst) = 0;
@@ -381,7 +381,7 @@ class AStar : public Algorithm {
         heuristic_->estimate(v);       // ← delegates to strategy
     }
 };
-\`\`\`
+```
 
 **Where**: `heuristic.hpp/cpp` (strategy interface + implementations), `astar.hpp/cpp` (context).
 
@@ -395,7 +395,7 @@ class AStar : public Algorithm {
 
 The graph is stored as three flat arrays (NOT a vector of node objects with edge lists):
 
-\`\`\`
+```
 offsets = [0, 2, 3, 3, 4]     // size = numNodes + 1 (start position of each node's edges)
 targets = [1, 3, 2, 1]        // size = numEdges (which node each edge goes TO)
 weights = [1, 10, 1, 5]       // size = numEdges (cost of traversing each edge)
@@ -407,7 +407,7 @@ For node u, iterate its outgoing edges like this:
         NodeId neighbor = targets[i];
         Weight  cost     = weights[i];
     }
-\`\`\`
+```
 
 **Why CSR over vector-of-vectors?**
 - Cache-friendly — all edges are contiguous in memory (CPU cache loves sequential access)
@@ -441,13 +441,13 @@ Standard road network format from the 9th DIMACS Implementation Challenge (acade
 DIMACS text parsing takes multiple seconds. Solution: after first load, dump raw CSR arrays to a `.bin` file.
 
 **.bin file format**:
-\`\`\`
+```
 [magic: "GRPH" 4 bytes][version: uint32][numNodes: uint64]
 [offsets: length(8 bytes) + raw uint32 array]
 [targets: length(8 bytes) + raw uint32 array]
 [weights: length(8 bytes) + raw uint32 array]
 [coords:  length(8 bytes) + raw Coord struct array]
-\`\`\`
+```
 
 Loading a `.bin` is a single bulk read — bypasses text parsing AND CSR construction entirely. Hundreds of times faster.
 
@@ -494,7 +494,7 @@ Loading a `.bin` is a single bulk read — bypasses text parsing AND CSR constru
 
 #### Heuristic Design — The Clever Part
 
-\`\`\`cpp
+```cpp
 // EuclideanHeuristic auto-calibration (heuristic.cpp):
 
 // STEP 1: Project all lat/lon → local plane in metres (once per graph, cached)
@@ -507,7 +507,7 @@ scale = min( weight / straightLineDistance(u, v) ) across ALL edges
 
 // STEP 3: For any node n:
 estimate(n) = scale * straightLineDistance(n, dst)
-\`\`\`
+```
 
 **Why this guarantees admissibility:**
 - `scale` is the minimum cost-per-metre — the fastest possible travel rate
@@ -534,7 +534,7 @@ For each algorithm, across N random (src, dst) query pairs:
 
 #### Benchmark Flow
 
-\`\`\`
+```
 1. generateQueries(numNodes, count, seed)
    → deterministic random (src, dst) pairs (same seed = same queries = reproducible)
 
@@ -550,11 +550,11 @@ For each algorithm, across N random (src, dst) query pairs:
 4. Output:
        writeReport(report, "out.json") → JSON file
        Formatted table → stdout (CLI) or JSON response (API)
-\`\`\`
+```
 
 #### How `nodesExpanded` Is Counted
 
-Inside each algorithm: `++result.nodesExpanded` executes when a node is **settled** (popped from frontier and marked finalized). Only counts nodes whose shortest path was determined — not nodes merely *discovered* but still in the queue.
+Inside each algorithm, `++result.nodesExpanded` executes when a node is **expanded** — i.e. popped from the frontier and processed. In Dijkstra/A* that pop also *settles* the node (its shortest distance is now final, guarded by `if (settled[u]) continue;`); in BFS the node is simply dequeued (BFS marks nodes visited on enqueue, so each is dequeued exactly once). Either way, it counts nodes the search actually processed — not nodes merely *discovered* and still sitting in the frontier.
 
 ---
 
@@ -596,17 +596,25 @@ Only when ALL checks pass → run the algorithms → send results.
 
 ### How to Run Benchmarks
 
-\`\`\`bash
+```bash
 # Synthetic (no download):
 ./graphene_cli gen-grid 1000 1000 data/grid.bin 10   # 1M-node grid, weights 1-10
 ./graphene_cli bench data/grid.bin 1000 42 data/bench.json
 
 # Real road network (New York):
+# Download BOTH the graph (.gr) and the coordinates (.co). The .co file is
+# REQUIRED for the A*-Euclidean heuristic — without coordinates it silently
+# degenerates to a zero heuristic and behaves exactly like Dijkstra.
 curl -O http://www.diag.uniroma1.it/~challenge9/data/USA-road-d/USA-road-d.NY.gr.gz
-gunzip USA-road-d.NY.gr.gz
-./graphene_cli convert USA-road-d.NY.gr - data/NY.bin
+curl -O http://www.diag.uniroma1.it/~challenge9/data/USA-road-d/USA-road-d.NY.co.gz
+gunzip USA-road-d.NY.gr.gz USA-road-d.NY.co.gz
+./graphene_cli convert USA-road-d.NY.gr USA-road-d.NY.co data/NY.bin
 ./graphene_cli bench data/NY.bin 1000 42 data/NY-bench.json
-\`\`\`
+```
+
+> **Note:** Passing `-` instead of the `.co` file skips coordinate loading. The
+> graph still works, but A*-Euclidean loses its heuristic and matches Dijkstra's
+> node-expansion count — so the speedup below would disappear.
 
 ### Benchmark Results: New York Road Network
 
@@ -822,7 +830,7 @@ Graphene finds shortest paths on road networks using CSR graphs and three algori
 
 ### Build Commands
 
-\`\`\`bash
+```bash
 # Configure + build
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_TOOLCHAIN_FILE=./vcpkg/scripts/buildsystems/vcpkg.cmake
@@ -846,7 +854,7 @@ ctest --test-dir build --output-on-failure
 curl -X POST http://localhost:8080/query \
   -H 'Content-Type: application/json' \
   -d '{"src":0,"dst":5000}'
-\`\`\`
+```
 
 ### Key Numbers
 
